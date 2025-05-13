@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import random
+from .subject import Subject
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, crossover_rate, elitism_count = None,
@@ -27,6 +28,17 @@ class GeneticAlgorithm:
         self.best_fitness = None
         self.current_population = None
         self.stop = None # Callback para parar o algoritmo
+        
+        # Dimensões da grade horária
+        self.num_periods = 6  # Número de períodos
+        self.num_days = 5     # Número de dias na semana
+        self.num_slots = 4    # Número de aulas por dia
+        
+        # Informações sobre as disciplinas e professores
+        self.subjects = None  # Lista de disciplinas
+        self.teachers = None  # Lista de professores
+        self.subject_teachers = None  # Mapeamento de disciplinas para professores
+        self.period_subjects = None   # Mapeamento de períodos para disciplinas
 
     def fitness_function(self):
         """
@@ -67,14 +79,57 @@ class GeneticAlgorithm:
     def initialize_population(self):
         """
         Cria a população inicial de indivíduos.
+        Cada indivíduo é uma matriz 2D representando a grade horária:
+        - Linhas: Períodos (6)
+        - Colunas: Slots totais (20 = 5 dias x 4 aulas)
         """
+        if not all([self.subjects, self.period_subjects]):
+            raise ValueError("As informações de disciplinas devem ser definidas antes de inicializar a população")
 
-        # Inicialização
-        return np.array([
-            [np.round(np.random.uniform(low, high), self.decimal_precision) for (low, high) in self.bounds]
-            for _ in range(self.population_size)
-        ])
-    
+        population = []
+        
+        for _ in range(self.population_size):
+            # Cria uma matriz vazia para cada indivíduo
+            timetable = np.zeros((self.num_periods, self.num_slots), dtype=int)
+            
+            # Para cada período
+            for period in range(self.num_periods):
+                # Obtém as disciplinas deste período
+                period_subjects = self.period_subjects[period]
+                
+                # Para cada disciplina do período
+                for subject in period_subjects:
+                    # Distribui as aulas da disciplina ao longo da semana
+                    remaining_classes = 4  # Número de aulas por semana
+                    
+                    while remaining_classes > 0:
+                        # Escolhe aleatoriamente um slot
+                        slot = random.randint(0, self.num_slots - 1)
+                        
+                        # Se o slot estiver vazio
+                        if timetable[period, slot] == 0:
+                            # Atribui a disciplina
+                            timetable[period, slot] = subject.id
+                            remaining_classes -= 1
+            
+            population.append(timetable)
+        
+        return np.array(population)
+
+    def _get_day_and_slot(self, slot_index):
+        """
+        Converte um índice de slot (0-19) em dia (0-4) e horário (0-3)
+        """
+        day = slot_index // 4
+        time_slot = slot_index % 4
+        return day, time_slot
+
+    def _get_slot_index(self, day, time_slot):
+        """
+        Converte dia (0-4) e horário (0-3) em índice de slot (0-19)
+        """
+        return day * 4 + time_slot
+
     def fitness(self):
         """
         Calcula a aptidão (fitness) da população.
