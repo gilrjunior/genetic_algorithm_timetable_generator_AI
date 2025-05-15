@@ -1,5 +1,5 @@
 import numpy as np
-from .subject import Subject
+from subject import Subject
 
 class Timetable:
     def __init__(self, num_periods=6, num_days=5, num_slots=4):

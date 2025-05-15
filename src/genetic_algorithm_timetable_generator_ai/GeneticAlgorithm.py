@@ -1,9 +1,9 @@
 import numpy as np
 import math
 import random
-from .subject import Subject
-from .timetable import Timetable
-from .mock_data import subjects, period_subjects
+from subject import Subject
+from timetable import Timetable
+from mock_data import subjects, period_subjects
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, crossover_rate, elitism_count = None,
@@ -54,7 +54,7 @@ class GeneticAlgorithm:
         if not all([self.subjects, self.period_subjects]):
             raise ValueError("As informações de disciplinas devem ser definidas antes de inicializar a população")
 
-        population = []
+        population = np.array([])
         
         for _ in range(self.population_size):
             timetable = Timetable(self.num_periods, self.num_days, self.num_slots)
@@ -89,7 +89,7 @@ class GeneticAlgorithm:
                     if timetable.is_slot_empty(period, day, slot):
                         timetable.set_subject_at(period, day, slot, self.empty_slots[period + 1].id)
             
-            population.append(timetable)
+            population = np.append(population, timetable)
         
         return population
 
@@ -144,38 +144,38 @@ class GeneticAlgorithm:
         
         return conflicts
 
-def count_gaps(self, timetable):
-    """
-    Conta o número de gaps entre as aulas com penalizações e bônus específicos.
-    """
-    score = 0
-    
-    for period in range(self.num_periods):
-        for day in range(self.num_days):
-            # Verifica slots 1-2 juntos
-            if (timetable.is_slot_empty(period, day, 0) and 
-                timetable.is_slot_empty(period, day, 1)):
-                score += 15  # Bônus grande para vagos 1-2
-            
-            # Verifica slots 3-4 juntos
-            if (timetable.is_slot_empty(period, day, 2) and 
-                timetable.is_slot_empty(period, day, 3)):
-                score += 15  # Bônus grande para vagos 3-4
-            
-            # Verifica slots 2-3 juntos
-            if (timetable.is_slot_empty(period, day, 1) and 
-                timetable.is_slot_empty(period, day, 2)):
-                score -= 20  # Penalidade forte para vagos 2-3
-            
-            # Verifica slots individuais
-            for slot in range(self.num_slots):
-                if timetable.is_slot_empty(period, day, slot):
-                    if slot in [0, 3]:  # Slots 1 ou 4
-                        score += 5  # Pequeno bônus
-                    elif slot in [1, 2]:  # Slots 2 ou 3
-                        score -= 10  # Penalidade
-    
-    return -score  # Retorna negativo porque queremos maximizar o fitness
+    def count_gaps(self, timetable):
+        """
+        Conta o número de gaps entre as aulas com penalizações e bônus específicos.
+        """
+        score = 0
+        
+        for period in range(self.num_periods):
+            for day in range(self.num_days):
+                # Verifica slots 1-2 juntos
+                if (timetable.is_slot_empty(period, day, 0) and 
+                    timetable.is_slot_empty(period, day, 1)):
+                    score += 15  # Bônus grande para vagos 1-2
+                
+                # Verifica slots 3-4 juntos
+                if (timetable.is_slot_empty(period, day, 2) and 
+                    timetable.is_slot_empty(period, day, 3)):
+                    score += 15  # Bônus grande para vagos 3-4
+                
+                # Verifica slots 2-3 juntos
+                if (timetable.is_slot_empty(period, day, 1) and 
+                    timetable.is_slot_empty(period, day, 2)):
+                    score -= 20  # Penalidade forte para vagos 2-3
+                
+                # Verifica slots individuais
+                for slot in range(self.num_slots):
+                    if timetable.is_slot_empty(period, day, slot):
+                        if slot in [0, 3]:  # Slots 1 ou 4
+                            score += 5  # Pequeno bônus
+                        elif slot in [1, 2]:  # Slots 2 ou 3
+                            score -= 10  # Penalidade
+        
+        return -score  # Retorna negativo porque queremos maximizar o fitness
 
     def count_consecutive_classes(self, timetable):
         """
@@ -293,16 +293,18 @@ def count_gaps(self, timetable):
 
             if random.random() < self.crossover_rate:
     
-                child1 = parent1.copy()
-                child2 = parent2.copy()
+                child1 = parent1
+                child2 = parent2
                 
-                periods = np.shape(parent1)[0]
+                print(f"Parent1: {parent1}")
+
+                periods = parent1.num_periods
 
                 rows_to_swap = random.sample(range(periods), periods//2)
 
                 for row in rows_to_swap:
-                    child1[row] = parent2[row].copy()
-                    child2[row] = parent1[row].copy()
+                    child1.schedule[row] = parent2.schedule[row]
+                    child2.schedule[row] = parent1.schedule[row]
 
                 children.extend([child1, child2])
             else:
@@ -322,20 +324,20 @@ def count_gaps(self, timetable):
         # TODO : Adaptar a mutação
 
         for idx, individual in enumerate(self.current_population):
-                for i in range(np.shape(individual)[0]):
-                    if random.random() < self.mutation_rate:
+            for i in range(individual.num_periods):
+                if random.random() < self.mutation_rate:
 
-                        # Seleciona duas colunas aleatórias
-                        columns_to_swap = random.sample(range(np.shape(individual)[1]), 2)
+                    # Seleciona duas colunas aleatórias
+                    columns_to_swap = random.sample(range(individual.total_slots), 2)
                         
-                        # Troca as colunas
-                        individual_copy =  individual[i, columns_to_swap[0]].copy()
-                        individual[i, columns_to_swap[0]] = individual[i, columns_to_swap[1]]
-                        individual[i, columns_to_swap[1]] = individual_copy
+                    # Troca as colunas
+                    individual_copy =  individual.schedule[i, columns_to_swap[0]]
+                    individual.schedule[i, columns_to_swap[0]] = individual.schedule[i, columns_to_swap[1]]
+                    individual.schedule[i, columns_to_swap[1]] = individual_copy
 
-                        self.current_population[idx] = individual
+                    self.current_population[idx] = individual
                         
-                        break
+                    break
 
     def run(self, generations, update_callback=None):
         """
@@ -361,7 +363,9 @@ def count_gaps(self, timetable):
 
             # Elitismo: mantém os melhores indivíduos da geração anterior
             if self.elitism_count and self.elitism_count > 0:
+                print(f"Elitismo: {self.elitism_count}")
                 elite_indices = np.argsort(fitness_values)[-self.elitism_count:]
+                print(f"Índices dos indivíduos elitistas: {elite_indices}")
                 elite_individuals = self.current_population[elite_indices]
 
             # Faz a seleção, crossover e mutação
@@ -385,13 +389,7 @@ def count_gaps(self, timetable):
                 update_callback(
                     generation=_ + 1,
                     best_individual=self.best_individual,
-                    best_fitness=self.best_fitness,
-                    error=self.current_error if self.current_error is not None else 0
+                    best_fitness=self.best_fitness
                 )
-
-
-            if self.max_known_value is not None and self.current_error < 1e-6:
-                print(f"Encerrando o algoritmo, pois o erro é menor que 1e-6")
-                break     
 
         return self.best_individual, self.best_fitness

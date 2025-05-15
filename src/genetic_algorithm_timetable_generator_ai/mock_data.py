@@ -1,4 +1,4 @@
-from .subject import Subject
+from subject import Subject
 
 # Lista de disciplinas mockadas
 subjects = [
