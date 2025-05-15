@@ -2,10 +2,12 @@ import numpy as np
 import math
 import random
 from .subject import Subject
+from .timetable import Timetable
+from .mock_data import subjects, period_subjects
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, crossover_rate, elitism_count = None,
-                 selection_method='roulette', tournament_size=None,):
+                 selection_method='roulette', tournament_size=None):
         """
         Inicializa os parâmetros do algoritmo genético.
 
@@ -33,55 +35,21 @@ class GeneticAlgorithm:
         self.num_periods = 6  # Número de períodos
         self.num_days = 5     # Número de dias na semana
         self.num_slots = 4    # Número de aulas por dia
+        self.total_slots = self.num_days * self.num_slots
         
-        # Informações sobre as disciplinas e professores
-        self.subjects = None  # Lista de disciplinas
-        self.teachers = None  # Lista de professores
-        self.subject_teachers = None  # Mapeamento de disciplinas para professores
-        self.period_subjects = None   # Mapeamento de períodos para disciplinas
-
-    def fitness_function(self):
-        """
-        Função real a ser maximizada.
-        """
-
-        ammount_conflicts = 0
-        ammount_gaps = 0
-        ammount_consecutive_classes = 0
-
-        return 500 - 20 * ammount_conflicts - 5 * ammount_gaps + 10 * ammount_consecutive_classes
-
-    def count_conflicts(self):
-        """        
-            Conta o número de conflitos entre os horários dos professores.
-        """
-        conflicts = 0
-
-        return  conflicts
-
-    def count_gaps(self):
-        """
-        Conta o número de gaps entre as aulas.
-        """
-        gaps = 0
-
-        return  gaps
-
-    def count_consecutive_classes(self):
-        """
-        Conta o número de aulas consecutivas.
-        """
+        # Informações sobre as disciplinas
+        self.subjects = subjects
+        self.period_subjects = period_subjects
         
-        consecutive_classes = 0
-
-        return consecutive_classes
+        # Criar disciplinas vazias para cada período
+        self.empty_slots = {
+            period: Subject.create_empty_slot(period)
+            for period in range(1, self.num_periods + 1)
+        }
 
     def initialize_population(self):
         """
         Cria a população inicial de indivíduos.
-        Cada indivíduo é uma matriz 2D representando a grade horária:
-        - Linhas: Períodos (6)
-        - Colunas: Slots totais (20 = 5 dias x 4 aulas)
         """
         if not all([self.subjects, self.period_subjects]):
             raise ValueError("As informações de disciplinas devem ser definidas antes de inicializar a população")
@@ -89,32 +57,155 @@ class GeneticAlgorithm:
         population = []
         
         for _ in range(self.population_size):
-            # Cria uma matriz vazia para cada indivíduo
-            timetable = np.zeros((self.num_periods, self.num_slots), dtype=int)
+            timetable = Timetable(self.num_periods, self.num_days, self.num_slots)
             
             # Para cada período
             for period in range(self.num_periods):
                 # Obtém as disciplinas deste período
-                period_subjects = self.period_subjects[period]
+                period_subjects = self.period_subjects[period + 1]  # +1 porque os períodos começam em 1
                 
                 # Para cada disciplina do período
-                for subject in period_subjects:
+                for subject_id in period_subjects:
+                    subject = next(s for s in self.subjects if s.id == subject_id) # Next é usado para pegar o primeiro elemento da lista que corresponde ao id da disciplina
+                    
                     # Distribui as aulas da disciplina ao longo da semana
-                    remaining_classes = 4  # Número de aulas por semana
+                    remaining_classes = subject.workload
                     
                     while remaining_classes > 0:
-                        # Escolhe aleatoriamente um slot
+                        # Escolhe aleatoriamente um dia e horário
+                        day = random.randint(0, self.num_days - 1)
                         slot = random.randint(0, self.num_slots - 1)
                         
-                        # Se o slot estiver vazio
-                        if timetable[period, slot] == 0:
-                            # Atribui a disciplina
-                            timetable[period, slot] = subject.id
+                        # Se o horário estiver vazio
+                        if timetable.is_slot_empty(period, day, slot):
+                            timetable.set_subject_at(period, day, slot, subject.id)
                             remaining_classes -= 1
+                
+                # Preenche os horários restantes com disciplinas vazias
+                empty_slots = timetable.count_empty_slots(period)
+                for _ in range(empty_slots):
+                    day = random.randint(0, self.num_days - 1)
+                    slot = random.randint(0, self.num_slots - 1)
+                    if timetable.is_slot_empty(period, day, slot):
+                        timetable.set_subject_at(period, day, slot, self.empty_slots[period + 1].id)
             
             population.append(timetable)
         
-        return np.array(population)
+        return population
+
+    def fitness_function(self):
+        """
+        Função real a ser maximizada.
+        """
+        fitness_values = []
+        
+        for timetable in self.current_population:
+            conflicts = self.count_conflicts(timetable)
+            gaps = self.count_gaps(timetable)
+            consecutive = self.count_consecutive_classes(timetable)
+            
+            fitness = 500 - 20 * conflicts - 5 * gaps + 10 * consecutive
+            fitness_values.append(fitness)
+        
+        return np.array(fitness_values)
+
+    def count_conflicts(self, timetable):
+        """
+        Conta o número de conflitos entre os horários dos professores.
+        """
+        conflicts = 0
+        
+        for period in range(self.num_periods):
+            for day in range(self.num_days):
+                for slot in range(self.num_slots):
+                    subject_id = timetable.get_subject_at(period, day, slot)
+                    if subject_id == 0:  # Ignora slots vazios
+                        continue
+                        
+                    subject = next(s for s in self.subjects if s.id == subject_id)
+                    if subject.is_empty_slot:
+                        continue
+                    
+                    # Verifica se o mesmo professor está dando aula em outro período no mesmo horário
+                    for other_period in range(self.num_periods):
+                        if other_period == period:
+                            continue
+                            
+                        other_subject_id = timetable.get_subject_at(other_period, day, slot)
+                        if other_subject_id == 0:
+                            continue
+                            
+                        other_subject = next(s for s in self.subjects if s.id == other_subject_id)
+                        if other_subject.is_empty_slot:
+                            continue
+                            
+                        if subject.teacher == other_subject.teacher:
+                            conflicts += 1
+        
+        return conflicts
+
+def count_gaps(self, timetable):
+    """
+    Conta o número de gaps entre as aulas com penalizações e bônus específicos.
+    """
+    score = 0
+    
+    for period in range(self.num_periods):
+        for day in range(self.num_days):
+            # Verifica slots 1-2 juntos
+            if (timetable.is_slot_empty(period, day, 0) and 
+                timetable.is_slot_empty(period, day, 1)):
+                score += 15  # Bônus grande para vagos 1-2
+            
+            # Verifica slots 3-4 juntos
+            if (timetable.is_slot_empty(period, day, 2) and 
+                timetable.is_slot_empty(period, day, 3)):
+                score += 15  # Bônus grande para vagos 3-4
+            
+            # Verifica slots 2-3 juntos
+            if (timetable.is_slot_empty(period, day, 1) and 
+                timetable.is_slot_empty(period, day, 2)):
+                score -= 20  # Penalidade forte para vagos 2-3
+            
+            # Verifica slots individuais
+            for slot in range(self.num_slots):
+                if timetable.is_slot_empty(period, day, slot):
+                    if slot in [0, 3]:  # Slots 1 ou 4
+                        score += 5  # Pequeno bônus
+                    elif slot in [1, 2]:  # Slots 2 ou 3
+                        score -= 10  # Penalidade
+    
+    return -score  # Retorna negativo porque queremos maximizar o fitness
+
+    def count_consecutive_classes(self, timetable):
+        """
+        Conta o número de aulas consecutivas da mesma disciplina.
+        """
+        consecutive = 0
+        
+        for period in range(self.num_periods):
+            for day in range(self.num_days):
+                current_subject = None
+                current_count = 0
+                
+                for slot in range(self.num_slots):
+                    subject_id = timetable.get_subject_at(period, day, slot)
+                    if subject_id == 0:
+                        continue
+                        
+                    subject = next(s for s in self.subjects if s.id == subject_id)
+                    if subject.is_empty_slot:
+                        continue
+                    
+                    if subject.id == current_subject:
+                        current_count += 1
+                        if current_count > 1:
+                            consecutive += 1
+                    else:
+                        current_subject = subject.id
+                        current_count = 1
+        
+        return consecutive
 
     def _get_day_and_slot(self, slot_index):
         """
@@ -190,6 +281,8 @@ class GeneticAlgorithm:
         """
         Realiza o cruzamento entre dois pais (one-point ou two-point).
         """
+
+        # TODO : Adaptar o crossover
         np.random.shuffle(self.current_population)
         children = []
         n = len(self.current_population)
@@ -225,6 +318,8 @@ class GeneticAlgorithm:
         """
         Aplica a mutação no indivíduo.
         """
+
+        # TODO : Adaptar a mutação
 
         for idx, individual in enumerate(self.current_population):
                 for i in range(np.shape(individual)[0]):
@@ -275,7 +370,7 @@ class GeneticAlgorithm:
             self.mutation()
 
             if elite_individuals is not None:
-                new_fitness_values = self.real_function()
+                new_fitness_values = self.fitness_function()
                 worst_indices = np.argsort(new_fitness_values)[:self.elitism_count]
                 for i, idx in enumerate(worst_indices):
                     self.current_population[idx] = elite_individuals[i]
